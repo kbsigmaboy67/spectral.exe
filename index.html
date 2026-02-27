@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spectral.exe</title>
+  <link rel="stylesheet" href="spectral.css">
+</head>
+<body>
+
+  <!-- ════════════════════════════════════════════
+       LOADING BAR (fixed, top of viewport)
+       ════════════════════════════════════════════ -->
+  <div id="loading-bar"></div>
+
+  <!-- ════════════════════════════════════════════
+       TITLE BAR
+       ════════════════════════════════════════════ -->
+  <div id="titlebar">
+    <div id="wm-controls">
+      <button class="wm-btn wm-close"  title="Close"></button>
+      <button class="wm-btn wm-min"    title="Minimize"></button>
+      <button class="wm-btn wm-max"    title="Maximize"></button>
+    </div>
+    <div id="titlebar-logo">Spectral.exe</div>
+    <div style="width:54px"></div>
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       TAB STRIP
+       ════════════════════════════════════════════ -->
+  <div id="tab-strip">
+    <button id="new-tab-btn" title="New Tab">+</button>
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       NAVIGATION BAR
+       ════════════════════════════════════════════ -->
+  <div id="nav-bar">
+    <button class="nav-btn" id="btn-back"    title="Back"    disabled>&#8592;</button>
+    <button class="nav-btn" id="btn-fwd"     title="Forward" disabled>&#8594;</button>
+    <button class="nav-btn" id="btn-refresh" title="Reload">&#8635;</button>
+    <button class="nav-btn" id="btn-home"    title="Home">&#8962;</button>
+
+    <div id="url-bar-wrap">
+      <span id="url-lock" class="neutral">🌐</span>
+      <input
+        id="url-bar"
+        type="text"
+        spellcheck="false"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        placeholder="spectral://welcome_page"
+      />
+      <button id="url-go" title="Go">&#10148;</button>
+    </div>
+
+    <button class="nav-btn" id="bookmark-btn" title="Bookmark this page">☆</button>
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       BOOKMARKS BAR
+       ════════════════════════════════════════════ -->
+  <div id="bookmarks-bar"></div>
+
+  <!-- ════════════════════════════════════════════
+       MAIN CONTENT AREA
+       ════════════════════════════════════════════ -->
+  <div id="content"></div>
+
+  <!-- ════════════════════════════════════════════
+       BOOKMARK RIGHT-CLICK CONTEXT MENU
+       ════════════════════════════════════════════ -->
+  <div id="bm-ctx" role="menu">
+    <div class="ctx-item" id="ctx-open"   role="menuitem">🔗 Open</div>
+    <div class="ctx-item" id="ctx-rename" role="menuitem">✏️ Rename</div>
+    <hr>
+    <div class="ctx-item danger" id="ctx-remove" role="menuitem">🗑️ Remove</div>
+  </div>
+
+  <!-- Filesystem + Override engine (must load first) -->
+  <script src="spectral-fs.js"></script>
+  <!-- Terminal engine -->
+  <script src="spectral-terminal.js"></script>
+  <!-- Editor engine -->
+  <script src="spectral-editor.js"></script>
+  <!-- FreeDNX Studio -->
+  <script src="spectral-fdnx.js"></script>
+  <!-- Browser engine -->
+  <script src="spectral.js"></script>
+
+</body>
+</html>

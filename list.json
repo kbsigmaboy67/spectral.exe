@@ -1,0 +1,74 @@
+{
+  "_comment": "Spectral.exe Domain Override & Routing List — edit freely to add more entries.",
+
+  "overrides": [
+    {
+      "_comment": "--- SEARCH ENGINES (embed-friendly) ---",
+      "match": "google://search",
+      "type": "redirect",
+      "target": "https://www.google.com/webhp?igu=1"
+    },
+    {
+      "match": "bing://search",
+      "type": "redirect",
+      "target": "https://www.bing.com/webhp?igu=1"
+    },
+
+    {
+      "_comment": "--- INLINE HTML (plain string) ---",
+      "match": "spectral://hello",
+      "type": "html",
+      "content": "<h1 style='font-family:monospace;color:cyan;background:#000;padding:40px'>Hello from Spectral!</h1>"
+    },
+
+    {
+      "_comment": "--- BASE64 HTML ---",
+      "match": "spectral://b64demo",
+      "type": "html_base64",
+      "content": "PCFET0NUWVBFIGh0bWw+PGh0bWw+PGJvZHkgc3R5bGU9J2JhY2tncm91bmQ6IzAwMDtjb2xvcjojMGYwO2ZvbnQtZmFtaWx5Om1vbm9zcGFjZTtwYWRkaW5nOjQwcHgnPjxoMT5CYXNlNjQgSFRNTCBMb2FkZWQhPC9oMT48L2JvZHk+PC9odG1sPg=="
+    },
+
+    {
+      "_comment": "--- FETCH from URL and load as blob ---",
+      "match": "spectral://fetchdemo",
+      "type": "fetch",
+      "target": "https://example.com"
+    },
+
+    {
+      "_comment": "--- GitHub Pages (iframe, no URL leaking) ---",
+      "match": "gh://spectral",
+      "type": "github",
+      "target": "https://example.github.io/spectral",
+      "display": "spectral (GitHub)"
+    },
+
+    {
+      "_comment": "--- CUSTOM DOMAIN → GitHub Pages mapping (hides true URL) ---",
+      "match": "proxy://petezah",
+      "type": "github",
+      "target": "https://tubmledxeni.viar3d.com",
+      "display": "PeteZah Games"
+    },
+
+    {
+      "_comment": "--- ADD YOUR OWN ENTRIES BELOW THIS LINE ---",
+      "_example_html": {
+        "match": "myapp://mygame",
+        "type": "html",
+        "content": "<html><body style='background:#000;color:#0f0'>My inline game HTML here</body></html>"
+      },
+      "_example_fetch": {
+        "match": "myapp://remote",
+        "type": "fetch",
+        "target": "https://somesite.com/app.html"
+      },
+      "_example_github": {
+        "match": "myapp://coolsite",
+        "type": "github",
+        "target": "https://yourusername.github.io/yourrepo",
+        "display": "Cool Site"
+      }
+    }
+  ]
+}
