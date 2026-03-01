@@ -867,3 +867,82 @@ body {
 .tab[style*="background-image"] .tab-favicon,
 .tab[style*="background-image"] .tab-title,
 .tab[style*="background-image"] .tab-close { position: relative; z-index: 1; }
+
+/* ── FULLSCREEN BUTTON ───────────────────────── */
+#btn-fullscreen:hover:not(:disabled) { color: var(--cyan); border-color: #2a2a2a; }
+#btn-fullscreen.is-fullscreen        { color: var(--cyan); text-shadow: 0 0 8px rgba(0,238,255,.5); }
+
+/* ── DOWNLOAD BUTTON ─────────────────────────── */
+#btn-download:hover:not(:disabled) { color: var(--g); border-color: #2a2a2a; }
+#btn-download.downloading          { color: var(--g); animation: matrixPulse 0.8s ease-in-out infinite; }
+
+/* ── FULLSCREEN CONTENT MODE ────────────────── */
+/* When a tab iframe is fullscreened we hide everything except the content */
+body.spectral-fullscreen #titlebar,
+body.spectral-fullscreen #tab-strip,
+body.spectral-fullscreen #nav-bar,
+body.spectral-fullscreen #bookmarks-bar {
+  display: none !important;
+}
+body.spectral-fullscreen #content {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+
+/* ── DEV GATE (list.json locked behind spectral dev password) ── */
+.devgate-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; height: 100%; gap: 20px;
+  font-family: var(--font-mono); padding: 40px; text-align: center;
+}
+.devgate-icon { font-size: 52px; animation: matrixPulse 2s ease-in-out infinite; }
+.devgate-title {
+  font-family: var(--font-logo); font-size: 16px; color: var(--cyan);
+  letter-spacing: 4px; text-transform: uppercase;
+}
+.devgate-uuid {
+  font-size: 11px; color: #1e3a1e; letter-spacing: 3px; font-family: var(--font-mono);
+}
+.devgate-sub { font-size: 12px; color: #2a2a2a; font-family: var(--font-mono); }
+.devgate-form { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
+.devgate-input {
+  background: #030303; border: 1px solid #252525; border-radius: 6px;
+  color: #00ff41; font-family: var(--font-mono); font-size: 13px;
+  padding: 10px 18px; outline: none; width: 340px;
+  transition: border-color .2s, box-shadow .2s;
+  letter-spacing: 2px;
+}
+.devgate-input:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 12px rgba(0,238,255,.18), inset 0 0 12px rgba(0,0,0,.8);
+}
+.devgate-input::placeholder { color: #1a1a1a; letter-spacing: 1px; }
+.devgate-btn {
+  background: linear-gradient(135deg, #001a33, #003366);
+  border: 1px solid var(--cyan); border-radius: 6px; color: var(--cyan);
+  font-family: var(--font-logo); font-size: 11px; font-weight: 700;
+  padding: 10px 22px; cursor: pointer; letter-spacing: 2px;
+  transition: all .2s; text-transform: uppercase;
+}
+.devgate-btn:hover { background: rgba(0,238,255,.1); box-shadow: 0 0 14px rgba(0,238,255,.25); }
+.devgate-error {
+  font-family: var(--font-mono); font-size: 11px; color: var(--r);
+  opacity: 0; transition: opacity .25s; height: 14px; letter-spacing: 1px;
+}
+.devgate-attempts { font-size: 10px; color: #1a1a1a; font-family: var(--font-mono); letter-spacing: 1px; }
+.devgate-hint { font-size: 10px; color: #111; font-family: var(--font-mono); letter-spacing: .5px; margin-top: -8px; }
+
+/* ── DOWNLOAD TOAST ──────────────────────────── */
+#spectral-dl-toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: #080808; border: 1px solid var(--g);
+  border-radius: 8px; padding: 10px 18px;
+  font-family: var(--font-mono); font-size: 12px; color: var(--g);
+  pointer-events: none; opacity: 0;
+  transition: opacity .25s, transform .25s;
+  transform: translateY(10px);
+  z-index: 99999; max-width: 360px;
+  box-shadow: 0 0 20px rgba(0,255,136,.08);
+}
+#spectral-dl-toast.show { opacity: 1; transform: translateY(0); }
