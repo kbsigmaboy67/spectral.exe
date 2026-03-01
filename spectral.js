@@ -776,10 +776,12 @@ function renderGatewayPage(tabId, el) {
         <span class="gw-panel-title">⚡ Local Overrides</span>
         <div class="gw-panel-actions">
           <button class="gw-btn gw-btn-primary" onclick="gwOvNew()">+ New Override</button>
+          <button class="gw-btn" id="gw-listjson-btn" onclick="gwToggleListJson()" title="list.json overrides — Spectral Dev only">🔒 list.json</button>
         </div>
       </div>
       <div class="gw-tip">Local overrides have priority over <code>list.json</code>. Use any protocol as match key. Each override supports optional <code>tabTitle</code>, <code>tabFavicon</code>, <code>tabImage</code>, and <code>password</code>.</div>
       <div id="gw-ov-list" class="gw-list"></div>
+      <div id="gw-listjson-panel" style="display:none;border-top:1px solid #111;flex-shrink:0;overflow-y:auto;max-height:45%"></div>
     </div>
 
     <!-- FILESYSTEM -->
@@ -1034,6 +1036,71 @@ function gwRenderOverrides() {
 function gwOvNew()    { gwOvModal(null); }
 function gwOvEdit(id) { const ov = window.SpectralLO.load().find(e => e.id === id); if (ov) gwOvModal(ov); }
 function gwOvDelete(id) { if (confirm('Delete this override?')) { window.SpectralLO.remove(id); gwRenderOverrides(); gwRefreshStats(); } }
+
+// ── list.json panel — gated behind dev auth ─────────────────────
+let listJsonPanelOpen = false;
+function gwToggleListJson() {
+  if (listJsonPanelOpen) {
+    listJsonPanelOpen = false;
+    const panel = document.getElementById('gw-listjson-panel');
+    const btn   = document.getElementById('gw-listjson-btn');
+    if (panel) panel.style.display = 'none';
+    if (btn)   btn.innerHTML = '🔒 list.json';
+    return;
+  }
+  requireDevAuth(() => {
+    listJsonPanelOpen = true;
+    gwRenderListJson();
+    const btn = document.getElementById('gw-listjson-btn');
+    if (btn) btn.innerHTML = '🔓 list.json';
+  });
+}
+
+function gwRenderListJson() {
+  const panel = document.getElementById('gw-listjson-panel');
+  if (!panel) return;
+  panel.style.display = 'block';
+  const arr = jsonOverrides;
+  if (!arr.length) {
+    panel.innerHTML = `<div style="color:#1e3a1e;font-family:var(--font-mono);font-size:11px;padding:16px 20px">// list.json is empty or not loaded</div>`;
+    return;
+  }
+  panel.innerHTML = `
+    <div style="padding:8px 20px 4px;font-family:var(--font-logo);font-size:10px;letter-spacing:3px;color:#1e3a1e;border-bottom:1px solid #0a0a0a;background:#020202">
+      🔓 list.json — ${arr.length} override${arr.length!==1?'s':''} — dev view
+    </div>
+    <div style="padding:8px 12px">
+    ${arr.map(ov => {
+      const badgeCls = `gw-ov-badge-${(ov.type||'redirect').replace(/_/g,'')}`;
+      const target   = escHtml(ov.target || ov.content?.slice(0,70) || '');
+      return `
+      <div class="gw-ov-item" style="opacity:.75;border-color:#0d0d0d">
+        <div>
+          <div class="gw-ov-row">
+            <span class="gw-ov-badge ${badgeCls}">${escHtml(ov.type)}</span>
+            <span class="gw-ov-match">${escHtml(ov.match)}</span>
+            ${ov.display?`<span style="font-size:11px;color:#444">${escHtml(ov.display)}</span>`:''}
+          </div>
+          <div class="gw-ov-target">${target}${(ov.content?.length||0)>70?'…':''}</div>
+        </div>
+        <div class="gw-ov-actions">
+          <button class="gw-btn" style="font-size:11px" onclick="navigateTo('${escAttr(ov.match)}')">▶ Test</button>
+          <button class="gw-btn" style="font-size:11px" onclick="gwCloneFromListJson('${escAttr(ov.match)}')">⧉ Clone</button>
+        </div>
+      </div>`;
+    }).join('')}
+    </div>`;
+}
+
+function gwCloneFromListJson(match) {
+  const ov = jsonOverrides.find(o => o.match === match);
+  if (!ov) return;
+  const clone = { ...ov }; delete clone.id;
+  window.SpectralLO.add(clone);
+  gwRenderOverrides();
+  gwRefreshStats();
+  showDlToast('✓ Cloned to local overrides');
+}
 
 function gwOvModal(existing) {
   const isNew = !existing;
@@ -1527,6 +1594,265 @@ function clearData() { if (confirm('Clear all Spectral.exe browser data?')) { lo
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escAttr(s) { return escHtml(s); }
 
+// ── FULLSCREEN ─────────────────────────────────────────────────
+let spectralFullscreen = false;
+
+function toggleFullscreen() {
+  spectralFullscreen = !spectralFullscreen;
+  document.body.classList.toggle('spectral-fullscreen', spectralFullscreen);
+  const btn = document.getElementById('btn-fullscreen');
+  if (spectralFullscreen) {
+    btn.classList.add('is-fullscreen');
+    btn.title     = 'Exit Fullscreen';
+    btn.innerHTML = '&#x2715;'; // ✕ while fullscreen
+    // Try real browser fullscreen API too
+    document.documentElement.requestFullscreen?.().catch(() => {});
+  } else {
+    btn.classList.remove('is-fullscreen');
+    btn.title     = 'Fullscreen tab';
+    btn.innerHTML = '&#x26F6;';
+    document.exitFullscreen?.().catch(() => {});
+  }
+}
+
+// Sync if user presses Escape / browser F11 exits native fullscreen
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && spectralFullscreen) {
+    spectralFullscreen = false;
+    document.body.classList.remove('spectral-fullscreen');
+    const btn = document.getElementById('btn-fullscreen');
+    if (btn) { btn.classList.remove('is-fullscreen'); btn.title = 'Fullscreen tab'; btn.innerHTML = '&#x26F6;'; }
+  }
+});
+
+// ── DOWNLOAD PAGE → local:// ────────────────────────────────────
+async function downloadCurrentPage() {
+  const tab = activeTab();
+  if (!tab) return;
+
+  const btn = document.getElementById('btn-download');
+  btn.classList.add('downloading');
+
+  const url = tab.url;
+  let saved = false;
+
+  try {
+    // ── Case 1: spectral:// or local:// internal pages — skip
+    if (url.startsWith('spectral://') || url.startsWith('about:')) {
+      showDlToast('⚠ Cannot save internal spectral:// pages', 'warn');
+      return;
+    }
+
+    // ── Case 2: local:// file — it's already saved, just notify
+    if (url.startsWith('local://')) {
+      showDlToast('💾 Already in local:// filesystem');
+      return;
+    }
+
+    // ── Case 3: blob: URL — read blob content directly
+    if (url.startsWith('blob:') || url.startsWith('data:')) {
+      const res  = await fetch(url);
+      const blob = await res.blob();
+      const ext  = blob.type.includes('html') ? '.html' : blob.type.includes('image/') ? ('.' + blob.type.split('/')[1]) : '.bin';
+      const path = await dlPromptPath('/downloads/page' + ext);
+      if (!path) return;
+      await window.SpectralFS.write(path, await blob.arrayBuffer(), blob.type);
+      showDlToast('✓ Saved to local://' + path);
+      saved = true;
+      return;
+    }
+
+    // ── Case 4: detect by URL extension (image, etc.)
+    const urlPath   = (() => { try { return new URL(url).pathname; } catch(_) { return url; } })();
+    const ext       = urlPath.split('.').pop().toLowerCase();
+    const imageExts = ['png','jpg','jpeg','gif','webp','svg','ico','bmp','avif'];
+    const isImage   = imageExts.includes(ext);
+
+    if (isImage) {
+      // Fetch binary image and save
+      const res  = await fetch(url, { mode: 'no-cors' }).catch(() => null);
+      if (res) {
+        const blob = await res.blob();
+        const mime = blob.type || ('image/' + ext);
+        const name = urlPath.split('/').pop() || ('image.' + ext);
+        const path = await dlPromptPath('/downloads/' + name);
+        if (!path) return;
+        await window.SpectralFS.write(path, await blob.arrayBuffer(), mime);
+        showDlToast('✓ Image saved to local://' + path);
+        saved = true;
+        return;
+      }
+    }
+
+    // ── Case 5: Try to get HTML from the active iframe
+    const contentEl = document.querySelector(`.tab-content[data-id="${tab.id}"]`);
+    const iframe    = contentEl?.querySelector('iframe');
+
+    // Same-origin blob iframe — we can read its HTML
+    if (iframe?.src?.startsWith('blob:') || iframe?.src?.startsWith('data:')) {
+      const res  = await fetch(iframe.src);
+      const text = await res.text();
+      const path = await dlPromptPath('/downloads/page.html');
+      if (!path) return;
+      await window.SpectralFS.write(path, text, 'text/html');
+      showDlToast('✓ HTML saved to local://' + path);
+      saved = true;
+      return;
+    }
+
+    // Cross-origin — fetch directly
+    const fetchUrl = iframe?.getAttribute('data-spectral-src') || url;
+    const res      = await fetch(fetchUrl).catch(() => null);
+    if (res && res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      const isHtml      = contentType.includes('html');
+      const isImg       = contentType.includes('image/');
+      const body        = await res.arrayBuffer();
+      const mime        = contentType.split(';')[0].trim();
+      const defExt      = isHtml ? '.html' : isImg ? ('.' + mime.split('/')[1]) : '.bin';
+      const name        = urlPath.split('/').pop() || ('download' + defExt);
+      const path        = await dlPromptPath('/downloads/' + name);
+      if (!path) return;
+      await window.SpectralFS.write(path, body, mime || 'application/octet-stream');
+      showDlToast('✓ Saved to local://' + path);
+      saved = true;
+      return;
+    }
+
+    showDlToast('⚠ Could not fetch page (cross-origin restriction)', 'warn');
+
+  } catch (e) {
+    showDlToast('✗ Download failed: ' + e.message, 'err');
+  } finally {
+    btn.classList.remove('downloading');
+  }
+}
+
+function dlPromptPath(defaultPath) {
+  return new Promise(resolve => {
+    // Custom styled prompt modal
+    const bg = document.createElement('div');
+    bg.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:99998;display:flex;align-items:center;justify-content:center';
+    bg.innerHTML = `
+      <div style="background:#080808;border:1px solid #252525;border-radius:10px;padding:24px;width:440px;max-width:95vw;display:flex;flex-direction:column;gap:14px;box-shadow:0 0 40px rgba(0,255,136,.07)">
+        <div style="font-family:var(--font-logo);font-size:13px;color:var(--g);letter-spacing:2px">⬇ SAVE TO local://</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:#2a5a2a">Destination path in local:// filesystem:</div>
+        <input id="dl-path-input" type="text" value="${defaultPath}"
+          style="background:#050505;border:1px solid #252525;border-radius:5px;color:#00ff41;font-family:var(--font-mono);font-size:13px;padding:9px 14px;outline:none;width:100%;transition:border-color .2s;letter-spacing:.5px"
+          onfocus="this.style.borderColor='var(--g)'" onblur="this.style.borderColor='#252525'"/>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button id="dl-cancel" style="background:transparent;border:1px solid #252525;border-radius:4px;color:#444;font-family:var(--font-mono);font-size:12px;padding:7px 16px;cursor:pointer">Cancel</button>
+          <button id="dl-save"   style="background:linear-gradient(135deg,#001a0a,#003322);border:1px solid var(--g);border-radius:4px;color:var(--g);font-family:var(--font-logo);font-size:11px;letter-spacing:1px;padding:7px 18px;cursor:pointer">SAVE</button>
+        </div>
+      </div>`;
+    document.body.appendChild(bg);
+    const input = bg.querySelector('#dl-path-input');
+    input.focus(); input.select();
+    const ok  = () => { const v = input.value.trim(); bg.remove(); resolve(v || null); };
+    const esc = () => { bg.remove(); resolve(null); };
+    bg.querySelector('#dl-save').addEventListener('click', ok);
+    bg.querySelector('#dl-cancel').addEventListener('click', esc);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') ok(); if (e.key === 'Escape') esc(); });
+  });
+}
+
+function showDlToast(msg, type = 'ok') {
+  let t = document.getElementById('spectral-dl-toast');
+  if (!t) { t = document.createElement('div'); t.id = 'spectral-dl-toast'; document.body.appendChild(t); }
+  const colors = { ok: 'var(--g)', warn: 'var(--yellow)', err: 'var(--r)' };
+  t.style.color = colors[type] || colors.ok;
+  t.style.borderColor = colors[type] || colors.ok;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── DEV GATE — list.json protected panel ──────────────────────
+// The Spectral Dev token: a fixed UUID-style key hard-coded here.
+// Change this to any UUID-looking string — it's the "prove you're a dev" gate.
+const SPECTRAL_DEV_TOKEN = 'SPEC-7f3a-19cc-4d2b-a801-e99f2c38d1b7';
+const DEV_GATE_KEY       = 'spectral_dev_unlocked';
+
+function isDevUnlocked() {
+  return sessionStorage.getItem(DEV_GATE_KEY) === '1';
+}
+
+// Called from gateway or anywhere list.json entries need to be shown
+function requireDevAuth(onUnlock) {
+  if (isDevUnlocked()) { onUnlock(); return; }
+
+  // Generate a fake-looking "session token" shown as flavour text
+  const fakeSession = Array.from({length: 4}, () =>
+    Math.random().toString(16).slice(2, 6).toUpperCase()
+  ).join('-');
+
+  const bg = document.createElement('div');
+  bg.className = 'gw-modal-bg';
+  bg.style.zIndex = '20000';
+  let attempts = 0;
+
+  bg.innerHTML = `
+  <div style="background:#030303;border:1px solid #1a1a1a;border-radius:12px;padding:36px 40px;width:520px;max-width:95vw;display:flex;flex-direction:column;gap:0;box-shadow:0 0 80px rgba(0,238,255,.06),0 40px 100px rgba(0,0,0,.98)"
+    onclick="event.stopPropagation()">
+    <div class="devgate-wrap">
+      <div class="devgate-icon">🛡</div>
+      <div class="devgate-title">Spectral Dev Auth</div>
+      <div class="devgate-uuid">session // ${fakeSession}</div>
+      <div class="devgate-sub">list.json overrides are restricted to verified Spectral developers.<br>Enter your dev token to unlock this view.</div>
+      <div class="devgate-hint">format: SPEC-xxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</div>
+      <div class="devgate-form">
+        <input class="devgate-input" id="devgate-input" type="password"
+          placeholder="SPEC-xxxx-xxxx-xxxx-xxxx-xxxx"
+          autocomplete="off" spellcheck="false"/>
+        <button class="devgate-btn" id="devgate-btn">VERIFY</button>
+      </div>
+      <div class="devgate-error" id="devgate-error"></div>
+      <div class="devgate-attempts" id="devgate-attempts"></div>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+
+  // Auto-uppercase and format as they type
+  const input = document.getElementById('devgate-input');
+  input.addEventListener('input', () => {
+    // Don't force format during typing — just uppercase
+    input.value = input.value.toUpperCase();
+  });
+
+  const verify = () => {
+    const val = input.value.trim();
+    if (val === SPECTRAL_DEV_TOKEN) {
+      sessionStorage.setItem(DEV_GATE_KEY, '1');
+      bg.remove();
+      // Brief flash before calling unlock
+      showDlToast('✓ Dev access granted — session active', 'ok');
+      setTimeout(onUnlock, 180);
+    } else {
+      attempts++;
+      const errEl = document.getElementById('devgate-error');
+      const attEl = document.getElementById('devgate-attempts');
+      const msgs  = [
+        'ACCESS DENIED — invalid token',
+        'AUTHENTICATION FAILED — retry',
+        'TOKEN MISMATCH — verification error',
+        'REJECTED — check your credentials',
+      ];
+      if (errEl) { errEl.textContent = msgs[(attempts - 1) % msgs.length]; errEl.style.opacity = '1'; setTimeout(() => errEl.style.opacity = '0', 1800); }
+      if (attEl) attEl.textContent = attempts > 1 ? `${attempts} failed attempt${attempts > 1 ? 's' : ''} this session` : '';
+      input.value = '';
+      input.focus();
+      // Shake animation
+      input.style.animation = 'none';
+      requestAnimationFrame(() => { input.style.animation = 'borderGlow 0.3s ease-in-out 2'; });
+    }
+  };
+
+  document.getElementById('devgate-btn').addEventListener('click', verify);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') verify(); if (e.key === 'Escape') bg.remove(); });
+  input.focus();
+}
+
 // ── EVENT WIRING ───────────────────────────────────────────────
 function wireEvents() {
   document.getElementById('new-tab-btn').addEventListener('click', () => createTab('spectral://new_tab'));
@@ -1541,6 +1867,9 @@ function wireEvents() {
   });
   document.getElementById('btn-refresh').addEventListener('click', () => { const tab = activeTab(); if (tab) navigateTo(tab.url, true); });
   document.getElementById('btn-home').addEventListener('click', () => navigateTo(settings.homepage));
+
+  document.getElementById('btn-fullscreen').addEventListener('click', toggleFullscreen);
+  document.getElementById('btn-download').addEventListener('click', downloadCurrentPage);
 
   const urlBar = document.getElementById('url-bar');
   urlBar.addEventListener('keydown', e => { if (e.key === 'Enter') navigateTo(urlBar.value); });
