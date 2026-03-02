@@ -1771,7 +1771,7 @@ function showDlToast(msg, type = 'ok') {
 // ── DEV GATE — list.json protected panel ──────────────────────
 // The Spectral Dev token: a fixed UUID-style key hard-coded here.
 // Change this to any UUID-looking string — it's the "prove you're a dev" gate.
-const SPECTRAL_DEV_TOKEN = 'SPEC-7f3a-19cc-4d2b-a801-e99f2c38d1b7';
+const SPECTRAL_DEV_TOKEN = 'SPEC-7F3A-19CC-4D2B-A801-E99F2C38D1B7';
 const DEV_GATE_KEY       = 'spectral_dev_unlocked';
 
 function isDevUnlocked() {
