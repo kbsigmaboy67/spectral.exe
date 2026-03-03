@@ -38,10 +38,12 @@ const TYPE_COLORS = {
 };
 
 // ── FDNX PAGE STATE ────────────────────────────────────────────
-let fdnxTabId   = null;
-let fdnxEditId  = null;  // id of override being edited (null = new)
-let fdnxFilter  = '';
-let fdnxDraftOv = null;  // current draft override object in wizard
+let fdnxTabId    = null;
+let fdnxEditId   = null;   // id of override being edited (null = new)
+let fdnxFilter   = '';
+let fdnxDraftOv  = null;   // current draft override object in wizard
+let fdnxMode     = 'local'; // 'local' | 'global'
+let fdnxGhStatus = '';      // last push status message
 
 // ── RENDER PAGE ────────────────────────────────────────────────
 function renderFDNX(tabId, el) {
@@ -66,10 +68,16 @@ function renderFDNX(tabId, el) {
       <span class="fdnx-tagline">// no-code override builder</span>
     </div>
     <div class="fdnx-header-right">
-      <button class="fdnx-btn fdnx-btn-primary" onclick="fdnxOpenWizard(null)">＋ New Override</button>
+      <div class="fdnx-mode-toggle">
+        <button class="fdnx-mode-btn active" id="fdnx-mode-local"  onclick="fdnxSetMode('local')">📦 Local</button>
+        <button class="fdnx-mode-btn"        id="fdnx-mode-global" onclick="fdnxSetMode('global')">🌐 Global (list.json)</button>
+      </div>
+      <div class="fdnx-header-sep"></div>
+      <button class="fdnx-btn fdnx-btn-primary" id="fdnx-new-btn" onclick="fdnxOpenWizard(null)">＋ New Override</button>
       <button class="fdnx-btn" onclick="fdnxImportUI()">⬆ Import JSON</button>
       <button class="fdnx-btn fdnx-btn-cyan" onclick="fdnxExportUI()">⬇ Export JSON</button>
       <button class="fdnx-btn" onclick="fdnxCopyAll()">📋 Copy All</button>
+      <button class="fdnx-btn" id="fdnx-gh-push-btn" onclick="fdnxGithubPush()" style="display:none" title="Push list.json to GitHub">🚀 Push to GitHub</button>
       <button class="fdnx-btn fdnx-btn-dim" onclick="fdnxReloadListJson()">↻ Reload list.json</button>
     </div>
   </div>
@@ -149,15 +157,41 @@ function fdnxRenderStats() {
     ${chips}`;
 }
 
+// ── MODE SWITCH ────────────────────────────────────────────────
+function fdnxSetMode(mode) {
+  if (mode === 'global' && !isDevUnlocked()) {
+    requireDevAuth(() => { fdnxMode = 'global'; fdnxApplyMode(); });
+    return;
+  }
+  fdnxMode = mode;
+  fdnxApplyMode();
+}
+
+function fdnxApplyMode() {
+  const isGlobal = fdnxMode === 'global';
+  document.getElementById('fdnx-mode-local') ?.classList.toggle('active', !isGlobal);
+  document.getElementById('fdnx-mode-global')?.classList.toggle('active',  isGlobal);
+  // Show GitHub push only in global mode (and only if token is configured)
+  const ghBtn = document.getElementById('fdnx-gh-push-btn');
+  if (ghBtn) ghBtn.style.display = isGlobal ? '' : 'none';
+  // New Override only makes sense for local; in global mode it still creates local and lets you promote
+  const newBtn = document.getElementById('fdnx-new-btn');
+  if (newBtn) newBtn.title = isGlobal ? 'New override (will be added to list.json after push)' : 'New local override';
+  fdnxRenderList();
+  fdnxRenderJsonPreview();
+}
+
 // ── MAIN LIST ──────────────────────────────────────────────────
 function fdnxRenderList() {
   const el = document.getElementById('fdnx-list');
   if (!el) return;
+
+  const isGlobal  = fdnxMode === 'global';
   const local     = window.SpectralLO.load().map(o=>({...o,_src:'local'}));
   const listjson  = (window._spectralJsonOverrides||[]).map(o=>({...o,_src:'listjson'}));
-  let all         = [...local,...listjson];
+  let all         = isGlobal ? listjson : local;
 
-  // Filter by search
+  // Filter
   const q = fdnxFilter.toLowerCase();
   if (q) all = all.filter(o =>
     (o.match||'').toLowerCase().includes(q) ||
@@ -168,9 +202,10 @@ function fdnxRenderList() {
   if (fdnxActiveType) all = all.filter(o => o.type === fdnxActiveType);
 
   if (!all.length) {
-    el.innerHTML = `<div class="fdnx-empty">
-      ${fdnxFilter || fdnxActiveType ? '// No overrides match your filter' : '// No overrides yet — click "+ New Override" to get started'}
-    </div>`;
+    const emptyMsg = isGlobal
+      ? (fdnxFilter || fdnxActiveType ? '// No list.json overrides match' : '// list.json is empty or not loaded — try ↻ Reload')
+      : (fdnxFilter || fdnxActiveType ? '// No local overrides match your filter' : '// No local overrides yet — click "+ New Override"');
+    el.innerHTML = `<div class="fdnx-empty">${emptyMsg}</div>`;
     fdnxRenderStats();
     fdnxRenderJsonPreview();
     return;
@@ -207,7 +242,9 @@ function fdnxCardHTML(o) {
       ${isLocal
         ? `<button class="fdnx-action-btn" onclick="fdnxOpenWizard('${_ea(o.id)}')">✏ Edit</button>
            <button class="fdnx-action-btn fdnx-action-del" onclick="fdnxDelete('${_ea(o.id)}')">🗑</button>`
-        : `<button class="fdnx-action-btn" onclick="fdnxCloneToLocal(${JSON.stringify(JSON.stringify(o))})">⧉ Clone</button>`
+        : `<button class="fdnx-action-btn" onclick="fdnxGlobalEdit(${JSON.stringify(JSON.stringify(o))})">✏ Edit</button>
+           <button class="fdnx-action-btn fdnx-action-del" onclick="fdnxGlobalDelete('${_ea(o.match)}')">🗑</button>
+           <button class="fdnx-action-btn" onclick="fdnxCloneToLocal(${JSON.stringify(JSON.stringify(o))})">⧉ Clone→Local</button>`
       }
       <span class="fdnx-src-tag">${isLocal?'local':'list.json'}</span>
     </div>
@@ -215,7 +252,7 @@ function fdnxCardHTML(o) {
 }
 
 function fdnxDelete(id) {
-  if (!confirm('Delete this override?')) return;
+  if (!confirm('Delete this local override?')) return;
   window.SpectralLO.remove(id);
   fdnxRenderList();
 }
@@ -224,32 +261,249 @@ function fdnxCloneToLocal(jsonStr) {
   const o = JSON.parse(jsonStr);
   delete o.id; delete o._src;
   window.SpectralLO.add(o);
+  fdnxToast('✓ Cloned to local overrides');
   fdnxRenderList();
+}
+
+// ── GLOBAL (list.json) EDIT / DELETE ──────────────────────────
+function fdnxGlobalEdit(jsonStr) {
+  // Open the wizard pre-filled with global override data
+  // Save will write back into the global array and mark it dirty
+  const o = JSON.parse(jsonStr);
+  fdnxEditId  = '__global__' + o.match; // sentinel
+  fdnxDraftOv = { ...o };
+  fdnxOpenWizardWith(o, /* isGlobal */ true);
+}
+
+function fdnxGlobalDelete(match) {
+  if (!confirm('Delete "' + match + '" from list.json?\n\nThis will mark list.json as modified. Use 🚀 Push to GitHub to save permanently.')) return;
+  const arr = (window._spectralJsonOverrides || []).filter(o => o.match !== match);
+  window._spectralJsonOverrides = arr;
+  // Reflect in jsonOverrides in main engine if accessible
+  if (typeof jsonOverrides !== 'undefined') {
+    try { jsonOverrides.splice(0, jsonOverrides.length, ...arr); } catch(_) {}
+  }
+  fdnxMarkGlobalDirty();
+  fdnxRenderList();
+  fdnxToast('✓ Removed from list.json (not yet pushed)');
+}
+
+// ── GLOBAL DIRTY STATE ─────────────────────────────────────────
+let fdnxGlobalDirty = false;
+function fdnxMarkGlobalDirty() {
+  fdnxGlobalDirty = true;
+  const btn = document.getElementById('fdnx-gh-push-btn');
+  if (btn) {
+    btn.style.display    = '';
+    btn.style.borderColor= '#ff00cc';
+    btn.style.color      = '#ff00cc';
+    btn.textContent      = '🚀 Push to GitHub ●';
+  }
+  fdnxRenderJsonPreview();
+}
+
+// ── GITHUB PUSH ────────────────────────────────────────────────
+function fdnxGetGhConfig() {
+  const saved = (() => { try { return JSON.parse(localStorage.getItem('spectral_gh_config') || '{}'); } catch(_) { return {}; } })();
+  return {
+    token:  saved.token  || (typeof GITHUB_TOKEN  !== 'undefined' ? GITHUB_TOKEN  : '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'),
+    repo:   saved.repo   || (typeof GITHUB_REPO   !== 'undefined' ? GITHUB_REPO   : 'kbsigmaboy67/spectral.exe'),
+    branch: saved.branch || (typeof GITHUB_BRANCH !== 'undefined' ? GITHUB_BRANCH : 'main'),
+    path:   saved.path   || (typeof GITHUB_PATH   !== 'undefined' ? GITHUB_PATH   : 'list.json'),
+  };
+}
+
+async function fdnxGithubPush() {
+  const cfg = fdnxGetGhConfig();
+  if (!cfg.token || !cfg.repo) {
+    fdnxShowGhConfigModal();
+    return;
+  }
+  await fdnxDoPush(cfg);
+}
+
+async function fdnxDoPush({ token, repo, branch, path }) {
+  const overrides = (window._spectralJsonOverrides || []).map(o => { const c={...o}; delete c._src; return c; });
+  const content   = JSON.stringify({ overrides }, null, 2);
+
+  fdnxToast('🚀 Pushing to GitHub…', 'warn');
+  const btn = document.getElementById('fdnx-gh-push-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '🚀 Pushing…'; }
+
+  try {
+    const apiBase = `https://api.github.com/repos/${repo}/contents/${path}`;
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    };
+
+    let sha = null;
+    const getRes = await fetch(`${apiBase}?ref=${branch}`, { headers });
+    if (getRes.ok) {
+      sha = (await getRes.json()).sha;
+    } else if (getRes.status !== 404) {
+      throw new Error(`GET failed: HTTP ${getRes.status}`);
+    }
+
+    const body = {
+      message: `[FreeDNX Studio] Update list.json — ${new Date().toISOString()}`,
+      content: btoa(unescape(encodeURIComponent(content))),
+      branch,
+    };
+    if (sha) body.sha = sha;
+
+    const putRes = await fetch(apiBase, { method: 'PUT', headers, body: JSON.stringify(body) });
+    if (!putRes.ok) {
+      const errData = await putRes.json().catch(() => ({}));
+      throw new Error(`Push failed: ${putRes.status} — ${errData.message || 'unknown'}`);
+    }
+
+    fdnxGlobalDirty = false;
+    if (btn) {
+      btn.disabled      = false;
+      btn.style.borderColor = '#00ff88';
+      btn.style.color       = '#00ff88';
+      btn.textContent   = '🚀 Push to GitHub';
+    }
+    fdnxToast('✓ list.json pushed to GitHub!');
+    setTimeout(() => { if (typeof loadOverrides === 'function') loadOverrides(); }, 1800);
+
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '🚀 Push to GitHub ●'; }
+    fdnxToast('✗ Push failed: ' + e.message, 'err');
+    console.error('[FDNX] GitHub push error:', e);
+  }
+}
+
+function fdnxShowGhConfigModal() {
+  // Read current effective values (runtime overrides take priority over compiled constants)
+  const runtimeCfg = (() => { try { return JSON.parse(localStorage.getItem('spectral_gh_config') || '{}'); } catch(_) { return {}; } })();
+  const tokenVal  = runtimeCfg.token  || (typeof GITHUB_TOKEN  !== 'undefined' ? GITHUB_TOKEN  : '');
+  const repoVal   = runtimeCfg.repo   || (typeof GITHUB_REPO   !== 'undefined' ? GITHUB_REPO   : '');
+  const branchVal = runtimeCfg.branch || (typeof GITHUB_BRANCH !== 'undefined' ? GITHUB_BRANCH : 'main');
+  const pathVal   = runtimeCfg.path   || (typeof GITHUB_PATH   !== 'undefined' ? GITHUB_PATH   : 'list.json');
+  const isConfigured = !!(tokenVal && repoVal);
+
+  const bg = document.createElement('div');
+  bg.className = 'fdnx-modal-bg';
+  bg.innerHTML = `
+  <div class="fdnx-modal" onclick="event.stopPropagation()" style="width:600px">
+    <div class="fdnx-modal-title">🚀 GitHub Push Config</div>
+    <div class="fdnx-modal-desc" style="color:${isConfigured?'#2a5a2a':'#555'}">
+      ${isConfigured
+        ? `✓ GitHub is configured for <code>${_e(repoVal)}</code>. Update values below to change.`
+        : `GitHub push is not configured. Enter your fine-grained token and repo below.
+           Values are saved to <code>localStorage</code> so they persist across sessions.`
+      }
+    </div>
+    <div class="fdnx-form-row">
+      <label class="fdnx-label">GitHub Fine-Grained Token</label>
+      <input class="fdnx-input" id="fdnx-gh-token" type="password" value="${_e(tokenVal)}"
+        placeholder="github_pat_xxxxxxxxxxxxxxxx" autocomplete="off"/>
+      <div class="fdnx-hint">Needs <code>Contents: read+write</code> on your repo. Create at github.com → Settings → Developer settings → Fine-grained tokens.</div>
+    </div>
+    <div class="fdnx-form-row">
+      <label class="fdnx-label">Repository (owner/repo)</label>
+      <input class="fdnx-input" id="fdnx-gh-repo" type="text" value="${_e(repoVal)}"
+        placeholder="kbsigmaboy67/spectral"/>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="fdnx-form-row">
+        <label class="fdnx-label">Branch</label>
+        <input class="fdnx-input" id="fdnx-gh-branch" type="text" value="${_e(branchVal)}" placeholder="main"/>
+      </div>
+      <div class="fdnx-form-row">
+        <label class="fdnx-label">Path in repo</label>
+        <input class="fdnx-input" id="fdnx-gh-path" type="text" value="${_e(pathVal)}" placeholder="list.json"/>
+      </div>
+    </div>
+    <div style="background:#030303;border:1px solid #111;border-radius:4px;padding:10px 12px;font-family:var(--font-mono);font-size:10px;color:#1e3a1e;line-height:1.7">
+      // You can also hard-code these permanently in <code style="color:#2a5a2a">spectral.js</code> at the top:<br>
+      const GITHUB_TOKEN  = '<span style="color:#444">${tokenVal ? '••••••••••••••••' : 'your_token_here'}</span>';<br>
+      const GITHUB_REPO   = '<span style="color:#444">${_e(repoVal) || 'owner/repo'}</span>';<br>
+      const GITHUB_BRANCH = '<span style="color:#444">${_e(branchVal)}</span>';<br>
+      const GITHUB_PATH   = '<span style="color:#444">${_e(pathVal)}</span>';
+    </div>
+    <div class="fdnx-modal-actions">
+      <button class="fdnx-btn" onclick="this.closest('.fdnx-modal-bg').remove()">Cancel</button>
+      ${isConfigured ? `<button class="fdnx-btn fdnx-btn-dim" onclick="fdnxGhClearConfig()">🗑 Clear Saved Config</button>` : ''}
+      <button class="fdnx-btn" onclick="fdnxGhSaveConfig()">💾 Save Config</button>
+      <button class="fdnx-btn fdnx-btn-primary" onclick="fdnxGhSessionPush()">🚀 Push Now</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  bg.addEventListener('click', e => { if(e.target===bg) bg.remove(); });
+}
+
+function fdnxGhSaveConfig() {
+  const token  = document.getElementById('fdnx-gh-token')?.value?.trim();
+  const repo   = document.getElementById('fdnx-gh-repo')?.value?.trim();
+  const branch = document.getElementById('fdnx-gh-branch')?.value?.trim() || 'main';
+  const path   = document.getElementById('fdnx-gh-path')?.value?.trim()   || 'list.json';
+  if (!token || !repo) { fdnxToast('⚠ Token and repo are required', 'warn'); return; }
+  localStorage.setItem('spectral_gh_config', JSON.stringify({ token, repo, branch, path }));
+  document.querySelector('.fdnx-modal-bg')?.remove();
+  fdnxToast('✓ GitHub config saved to localStorage');
+}
+
+function fdnxGhClearConfig() {
+  if (!confirm('Clear saved GitHub config from localStorage?')) return;
+  localStorage.removeItem('spectral_gh_config');
+  document.querySelector('.fdnx-modal-bg')?.remove();
+  fdnxToast('✓ GitHub config cleared');
+}
+
+async function fdnxGhSessionPush() {
+  const token  = document.getElementById('fdnx-gh-token')?.value?.trim();
+  const repo   = document.getElementById('fdnx-gh-repo')?.value?.trim();
+  const branch = document.getElementById('fdnx-gh-branch')?.value?.trim() || 'main';
+  const path   = document.getElementById('fdnx-gh-path')?.value?.trim()   || 'list.json';
+  if (!token || !repo) { fdnxToast('⚠ Token and repo are required', 'warn'); return; }
+  document.querySelector('.fdnx-modal-bg')?.remove();
+  await fdnxDoPush({ token, repo, branch, path });
 }
 
 // ── JSON PREVIEW ───────────────────────────────────────────────
 function fdnxRenderJsonPreview() {
   const el = document.getElementById('fdnx-json-preview');
   if (!el) return;
-  const local = window.SpectralLO.load();
-  el.value = JSON.stringify({ overrides: local }, null, 2);
+  const isGlobal = fdnxMode === 'global';
+  const overrides = isGlobal
+    ? (window._spectralJsonOverrides || []).map(o => { const c = {...o}; delete c._src; return c; })
+    : window.SpectralLO.load();
+  el.value = JSON.stringify({ overrides }, null, 2);
+
+  // Update panel header label
+  const titleEl = document.querySelector('.fdnx-json-title');
+  if (titleEl) titleEl.textContent = isGlobal ? '🌐 list.json Preview' : 'Local JSON Preview';
 }
 
 function fdnxCopyAll() {
-  const local = window.SpectralLO.load();
-  const json  = JSON.stringify({ overrides: local }, null, 2);
-  navigator.clipboard.writeText(json).then(() => fdnxToast('✓ Copied to clipboard'));
+  const isGlobal  = fdnxMode === 'global';
+  const overrides = isGlobal
+    ? (window._spectralJsonOverrides || []).map(o => { const c = {...o}; delete c._src; return c; })
+    : window.SpectralLO.load();
+  const json = JSON.stringify({ overrides }, null, 2);
+  navigator.clipboard.writeText(json).then(() =>
+    fdnxToast(isGlobal ? '✓ list.json copied to clipboard' : '✓ Local overrides copied')
+  );
 }
 
 // ── EXPORT ─────────────────────────────────────────────────────
 function fdnxExportUI() {
-  const local = window.SpectralLO.load();
-  const json  = JSON.stringify({ overrides: local }, null, 2);
-  const a     = document.createElement('a');
-  a.href      = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
-  a.download  = 'spectral-overrides.json';
+  const isGlobal  = fdnxMode === 'global';
+  const overrides = isGlobal
+    ? (window._spectralJsonOverrides || []).map(o => { const c = {...o}; delete c._src; return c; })
+    : window.SpectralLO.load();
+  const json     = JSON.stringify({ overrides }, null, 2);
+  const filename = isGlobal ? 'list.json' : 'spectral-overrides.json';
+  const a        = document.createElement('a');
+  a.href         = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+  a.download     = filename;
   a.click();
-  fdnxToast('✓ Exported spectral-overrides.json');
+  fdnxToast('✓ Exported ' + filename);
 }
 
 // ── IMPORT ─────────────────────────────────────────────────────
@@ -285,25 +539,66 @@ function fdnxImportUI() {
 function fdnxDoImport(merge) {
   const raw = document.getElementById('fdnx-imp-txt')?.value?.trim();
   if (!raw) { fdnxToast('⚠ Nothing to import', 'warn'); return; }
+  const isGlobal = fdnxMode === 'global';
   try {
     const parsed = JSON.parse(raw);
     const arr    = parsed.overrides || (Array.isArray(parsed) ? parsed : [parsed]);
     if (!arr.length) { fdnxToast('⚠ No overrides found', 'warn'); return; }
-    if (!merge) {
-      window.SpectralLO.save([]);
-      arr.forEach(o => { delete o.id; window.SpectralLO.add(o); });
+
+    if (isGlobal) {
+      // Import into global (list.json) in-memory store
+      const existing = merge ? (window._spectralJsonOverrides || []) : [];
+      const existingMatches = new Set(existing.map(o => o.match));
+      const toAdd = merge ? arr.filter(o => !existingMatches.has(o.match)) : arr;
+      window._spectralJsonOverrides = [...existing, ...toAdd];
+      if (typeof jsonOverrides !== 'undefined') {
+        try { jsonOverrides.splice(0, jsonOverrides.length, ...window._spectralJsonOverrides); } catch(_) {}
+      }
+      fdnxMarkGlobalDirty();
+      fdnxToast(`✓ ${arr.length} override(s) ${merge?'merged':'imported'} into list.json — push to save`);
     } else {
-      arr.forEach(o => { delete o.id; window.SpectralLO.add(o); });
+      if (!merge) {
+        window.SpectralLO.save([]);
+        arr.forEach(o => { delete o.id; window.SpectralLO.add(o); });
+      } else {
+        arr.forEach(o => { delete o.id; window.SpectralLO.add(o); });
+      }
+      fdnxToast(`✓ ${arr.length} override(s) ${merge?'merged':'imported'} locally`);
     }
+
     document.querySelector('.fdnx-modal-bg')?.remove();
     fdnxRenderList();
-    fdnxToast(`✓ ${arr.length} override(s) ${merge?'merged':'imported'}`);
   } catch(e) {
     fdnxToast('✗ Invalid JSON: ' + e.message, 'err');
   }
 }
 
-// ── RELOAD list.json ───────────────────────────────────────────
+// ── GLOBAL (list.json) EDIT — opens wizard pre-filled ─────────
+function fdnxOpenWizardWith(o, isGlobal) {
+  // Store a sentinel so fdnxWizSave knows this is a global edit
+  fdnxEditId  = isGlobal ? ('__global__' + o.match) : (o.id || null);
+  fdnxDraftOv = { ...o };
+
+  const bg = document.createElement('div');
+  bg.className = 'fdnx-modal-bg fdnx-wizard-bg';
+  bg.innerHTML = fdnxWizardHTML(fdnxDraftOv, isGlobal);
+  document.body.appendChild(bg);
+  bg.addEventListener('click', e => { if (e.target === bg) bg.remove(); });
+
+  document.getElementById('fdnx-wiz-type')?.addEventListener('change', e => {
+    fdnxDraftOv.type = e.target.value;
+    fdnxWizUpdateFields();
+  });
+
+  const liveFields = ['fdnx-wiz-match','fdnx-wiz-target','fdnx-wiz-content',
+    'fdnx-wiz-display','fdnx-wiz-tabTitle','fdnx-wiz-tabFavicon','fdnx-wiz-tabImage','fdnx-wiz-password'];
+  liveFields.forEach(fid => {
+    document.getElementById(fid)?.addEventListener('input', fdnxWizUpdatePreview);
+  });
+
+  fdnxWizUpdateFields();
+  fdnxWizUpdatePreview();
+}
 async function fdnxReloadListJson() {
   if (typeof loadOverrides === 'function') {
     await loadOverrides();
@@ -317,6 +612,14 @@ async function fdnxReloadListJson() {
 // WIZARD — New / Edit Override
 // ═══════════════════════════════════════════════════════════════
 function fdnxOpenWizard(id) {
+  const isGlobal = fdnxMode === 'global';
+
+  if (isGlobal && id) {
+    // Editing an existing global override — delegate to fdnxOpenWizardWith
+    const o = (window._spectralJsonOverrides || []).find(e => e.match === id || e.id === id);
+    if (o) { fdnxOpenWizardWith(o, true); return; }
+  }
+
   fdnxEditId  = id || null;
   fdnxDraftOv = id
     ? { ...window.SpectralLO.load().find(o=>o.id===id) }
@@ -324,17 +627,15 @@ function fdnxOpenWizard(id) {
 
   const bg = document.createElement('div');
   bg.className = 'fdnx-modal-bg fdnx-wizard-bg';
-  bg.innerHTML = fdnxWizardHTML(fdnxDraftOv);
+  bg.innerHTML = fdnxWizardHTML(fdnxDraftOv, isGlobal && !id);
   document.body.appendChild(bg);
   bg.addEventListener('click', e => { if (e.target === bg) bg.remove(); });
 
-  // Wire type change
   document.getElementById('fdnx-wiz-type')?.addEventListener('change', e => {
     fdnxDraftOv.type = e.target.value;
     fdnxWizUpdateFields();
   });
 
-  // Live JSON preview
   const liveFields = ['fdnx-wiz-match','fdnx-wiz-target','fdnx-wiz-content',
     'fdnx-wiz-display','fdnx-wiz-tabTitle','fdnx-wiz-tabFavicon','fdnx-wiz-tabImage','fdnx-wiz-password'];
   liveFields.forEach(fid => {
@@ -345,14 +646,24 @@ function fdnxOpenWizard(id) {
   fdnxWizUpdatePreview();
 }
 
-function fdnxWizardHTML(o) {
+function fdnxWizardHTML(o, isGlobal) {
   const typeSel = FDNX_TYPES.map(t =>
     `<option value="${t.id}" ${o.type===t.id?'selected':''}>${t.icon} ${t.label} — ${t.desc}</option>`
   ).join('');
 
+  const isEdit  = !!fdnxEditId;
+  const titleTxt = isGlobal
+    ? (isEdit ? '🌐 Edit Global Override (list.json)' : '🌐 New Global Override (list.json)')
+    : (isEdit ? '✏ Edit Local Override' : '＋ New Local Override');
+  const saveTxt  = isGlobal ? '🌐 Save to list.json' : '💾 Save Override';
+  const saveCls  = isGlobal ? 'fdnx-btn fdnx-btn-primary' : 'fdnx-btn fdnx-btn-primary';
+
   return `
-  <div class="fdnx-wizard" onclick="event.stopPropagation()">
-    <div class="fdnx-wiz-title">${fdnxEditId ? '✏ Edit Override' : '＋ New Override'}</div>
+  <div class="fdnx-wizard" onclick="event.stopPropagation()" data-global="${isGlobal?'1':'0'}">
+    <div class="fdnx-wiz-title" style="${isGlobal?'color:#ff00cc':''}">
+      ${titleTxt}
+      ${isGlobal?'<span style="font-size:10px;font-family:var(--font-mono);color:#3a1a3a;letter-spacing:2px;margin-left:12px">⚠ changes require GitHub push to persist</span>':''}
+    </div>
 
     <div class="fdnx-wiz-cols">
 
@@ -545,7 +856,7 @@ function fdnxWizardHTML(o) {
 
     <div class="fdnx-wiz-footer">
       <button class="fdnx-btn" onclick="this.closest('.fdnx-wizard-bg').remove()">Cancel</button>
-      <button class="fdnx-btn fdnx-btn-primary" onclick="fdnxWizSave()">💾 Save Override</button>
+      <button class="${saveCls}" onclick="fdnxWizSave()">${saveTxt}</button>
     </div>
   </div>`;
 }
@@ -966,8 +1277,50 @@ async function fdnxWizSave() {
   if (tabImg)    entry.tabImage   = tabImg;
   if (pw)        entry.password   = pw;
 
-  // Save
-  if (fdnxEditId) {
+  // ── Determine if this is a global save ──────────────────────
+  const wizEl    = document.querySelector('.fdnx-wizard[data-global]');
+  const saveGlobal = wizEl?.dataset?.global === '1';
+  const isGlobalEdit = typeof fdnxEditId === 'string' && fdnxEditId.startsWith('__global__');
+
+  if (saveGlobal || isGlobalEdit) {
+    // Write into _spectralJsonOverrides array (in-memory) and mark dirty for push
+    const arr = window._spectralJsonOverrides || [];
+
+    if (isGlobalEdit) {
+      // Update existing entry by match
+      const originalMatch = fdnxEditId.replace('__global__', '');
+      const idx = arr.findIndex(o => o.match === originalMatch);
+      if (idx >= 0) {
+        arr[idx] = { ...arr[idx], ...entry };
+      } else {
+        arr.push(entry);
+      }
+    } else {
+      // New global entry — check for duplicate match
+      const existing = arr.findIndex(o => o.match === entry.match);
+      if (existing >= 0) {
+        if (!confirm(`An entry with match "${entry.match}" already exists in list.json. Replace it?`)) return;
+        arr[existing] = entry;
+      } else {
+        arr.push(entry);
+      }
+    }
+
+    window._spectralJsonOverrides = arr;
+    // Sync into main engine's jsonOverrides array if accessible
+    if (typeof jsonOverrides !== 'undefined') {
+      try { jsonOverrides.splice(0, jsonOverrides.length, ...arr); } catch(_) {}
+    }
+
+    fdnxMarkGlobalDirty();
+    document.querySelector('.fdnx-wizard-bg')?.remove();
+    fdnxRenderList();
+    fdnxToast('✓ Saved to list.json (not yet pushed — click 🚀 Push to GitHub)');
+    return;
+  }
+
+  // ── Local save ───────────────────────────────────────────────
+  if (fdnxEditId && !isGlobalEdit) {
     window.SpectralLO.update(fdnxEditId, entry);
     fdnxToast('✓ Override updated');
   } else {
