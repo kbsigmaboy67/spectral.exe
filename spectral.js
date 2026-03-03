@@ -9,21 +9,21 @@ const STORAGE_KEY = 'spectral_state';
 const LIST_URL    = './list.json';
 
 // ╔═══════════════════════════════════════════════════════════════╗
-// ║  SPECTRAL DEV CONFIG — GitHub API for list.json editing      ║
-// ║  Fill these in to enable push-to-GitHub from FreeDNX Studio  ║
+// ║  SPECTRAL DEV CONFIG — GitHub API for list.json editing       ║
+// ║  Fill these in to enable push-to-GitHub from FreeDNX Studio   ║
 // ╠═══════════════════════════════════════════════════════════════╣
-// ║  GITHUB_TOKEN  — Fine-grained Personal Access Token          ║
-// ║    Scopes needed: Contents (read & write) on your repo       ║
-// ║    Create at: github.com → Settings → Developer settings     ║
-// ║               → Personal access tokens → Fine-grained tokens ║
+// ║  GITHUB_TOKEN  — Fine-grained Personal Access Token           ║
+// ║    Scopes needed: Contents (read & write) on your repo        ║
+// ║    Create at: github.com → Settings → Developer settings      ║
+// ║               → Personal access tokens → Fine-grained tokens  ║
 // ╠═══════════════════════════════════════════════════════════════╣
-// ║  GITHUB_REPO   — "owner/repo"  e.g. "kbsigmaboy67/spectral" ║
-// ║  GITHUB_BRANCH — branch that hosts your GitHub Pages site    ║
-// ║  GITHUB_PATH   — path to list.json inside the repo          ║
+// ║  GITHUB_REPO   — "owner/repo"  e.g. "kbsigmaboy67/spectral"   ║
+// ║  GITHUB_BRANCH — branch that hosts your GitHub Pages site     ║
+// ║  GITHUB_PATH   — path to list.json inside the repo            ║
 // ╠═══════════════════════════════════════════════════════════════╣
-// ║  You can also configure these at runtime without editing     ║
-// ║  this file: open spectral://FDNX → 🌐 Global mode →         ║
-// ║  🚀 Push to GitHub → "Save Config" stores to localStorage.  ║
+// ║  You can also configure these at runtime without editing      ║
+// ║  this file: open spectral://FDNX → 🌐 Global mode →           ║
+// ║  🚀 Push to GitHub → "Save Config" stores to localStorage.    ║
 // ╚═══════════════════════════════════════════════════════════════╝
 const GITHUB_TOKEN  = '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';             // ← paste your fine-grained token here
 const GITHUB_REPO   = 'kbsigmaboy67/spectral.exe';             // ← e.g. 'kbsigmaboy67/spectral'
