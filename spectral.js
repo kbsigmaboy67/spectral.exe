@@ -25,8 +25,8 @@ const LIST_URL    = './list.json';
 // ║  this file: open spectral://FDNX → 🌐 Global mode →         ║
 // ║  🚀 Push to GitHub → "Save Config" stores to localStorage.  ║
 // ╚═══════════════════════════════════════════════════════════════╝
-const GITHUB_TOKEN  = '';             // ← paste your fine-grained token here
-const GITHUB_REPO   = '';             // ← e.g. 'kbsigmaboy67/spectral'
+const GITHUB_TOKEN  = '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';             // ← paste your fine-grained token here
+const GITHUB_REPO   = 'kbsigmaboy67/spectral.exe';             // ← e.g. 'kbsigmaboy67/spectral'
 const GITHUB_BRANCH = 'main';        // ← branch (main / master / gh-pages)
 const GITHUB_PATH   = 'list.json';   // ← path inside repo
 
